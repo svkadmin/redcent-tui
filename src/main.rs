@@ -1,4 +1,5 @@
-// src/main.rs
+// main.rs
+
 mod scripts;
 
 use crossterm::{
@@ -157,46 +158,6 @@ impl App {
 
         command_text
     }
-
-    fn get_current_menu_view(&self) -> &Rc<RefCell<MenuNode>> {
-        self.nav_path.last().unwrap()
-    }
-
-    /// Returns a cloned Vec of nodes that should be visible in the menu view.
-    /// Behavior:
-    /// - If we're at the root (nav_path.len()==1) -> show all top-level nodes and, for any Menu node,
-    ///   show its immediate children inline (one level deep).
-    /// - If we're inside a submenu -> show only that menu's immediate children.
-    fn visible_nodes(&self) -> Vec<Rc<RefCell<MenuNode>>> {
-        let current_rc = self.get_current_menu_view();
-        let current = current_rc.borrow();
-
-        let mut v = Vec::new();
-        // If at root, flatten one level deep for convenience (show submenus & their children).
-        if self.nav_path.len() == 1 {
-            if let MenuNode::Menu { children, .. } = &*current {
-                for child in children {
-                    // push the top-level child
-                    v.push(child.clone());
-                    // if it's a menu, push its immediate children (indented logically by UI)
-                    if let MenuNode::Menu { children: subchildren, .. } = &*child.borrow() {
-                        for sub in subchildren {
-                            v.push(sub.clone());
-                        }
-                    }
-                }
-            }
-        } else {
-            // Not root: show only the current menu's immediate children (original behavior).
-            if let MenuNode::Menu { children, .. } = &*current {
-                for child in children {
-                    v.push(child.clone());
-                }
-            }
-        }
-
-        v
-    }
     
     fn get_selected_items(&self) -> Vec<String> {
         let mut names = Vec::new();
@@ -252,36 +213,27 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<A
         if let Event::Key(key) = event::read()? {
             match app.state {
                 AppState::Running => {
-                    // Build a non-borrowing view of visible nodes
-                    let visible = app.visible_nodes();
-                    // clamp selected index safely (no Ref borrow is held here)
-                    if !visible.is_empty() {
-                        app.selected_index = app.selected_index.min(visible.len() - 1);
-                    } else {
-                        app.selected_index = 0;
-                    }
+                    let visible_nodes = get_visible_nodes(&app.nav_path);
 
                     match key.code {
                         KeyCode::Char('q') => return Ok(ActionAfterExit::Quit),
                         KeyCode::Char('i') => { app.state = AppState::Finished; app.reboot_requested = false; },
                         KeyCode::Char('r') => { app.state = AppState::Finished; app.reboot_requested = true; },
                         KeyCode::Down => {
-                            if !visible.is_empty() {
-                                app.selected_index = (app.selected_index + 1) % visible.len();
+                            if !visible_nodes.is_empty() {
+                                app.selected_index = (app.selected_index + 1) % visible_nodes.len();
                             }
                         }
                         KeyCode::Up => {
-                            if !visible.is_empty() {
-                                app.selected_index = (app.selected_index + visible.len() - 1) % visible.len();
+                            if !visible_nodes.is_empty() {
+                                app.selected_index = (app.selected_index + visible_nodes.len() - 1) % visible_nodes.len();
                             }
                         }
                         KeyCode::Right | KeyCode::Enter => {
-                            if let Some(selected_rc) = visible.get(app.selected_index).cloned() {
-                                // borrow mutably only for the brief section that updates the node / nav_path
+                            if let Some((_, selected_rc)) = visible_nodes.get(app.selected_index) {
                                 let mut node_mut = selected_rc.borrow_mut();
                                 match &mut *node_mut {
                                     MenuNode::Menu { .. } => {
-                                        // Navigate into the chosen menu (preserve the nav path)
                                         drop(node_mut);
                                         app.nav_path.push(selected_rc.clone());
                                         app.selected_index = 0;
@@ -353,7 +305,6 @@ fn draw_main_ui(f: &mut Frame, app: &mut App) {
         ].as_ref())
         .split(f.size());
 
-    // compute path string (short lived borrow)
     let path_str = {
         app.nav_path.iter().map(|node_rc| {
             let node = node_rc.borrow();
@@ -373,122 +324,83 @@ fn draw_main_ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
         .split(chunks[1]);
 
-    // Acquire visible nodes (cloned Rcs) without holding long borrows
-    let visible = app.visible_nodes();
+    let visible_nodes = get_visible_nodes(&app.nav_path);
+    let menu_items: Vec<ListItem> = visible_nodes.iter().map(|(text, _)| ListItem::new(text.clone())).collect();
 
-    // Build display strings inside a short block so any Ref borrows drop before mutation
-    let menu_strings: Vec<String> = {
-        let mut out = Vec::new();
-        // When at root, visible contains (top-level node, then its children)
-        // We want to display indentation for children of menus at root.
-        if app.nav_path.len() == 1 {
-            // iterate pairs: top-level then its possible inline children
-            let mut i = 0usize;
-            while i < visible.len() {
-                let top_rc = visible[i].clone();
-                let top_b = top_rc.borrow();
-                match &*top_b {
-                    MenuNode::Menu { name: tname, .. } => {
-                        // top-level menu header
-                        out.push(format!("{} >", tname));
-                        i += 1;
-                        // push following items that belong to this submenu (one-level deep),
-                        // they were appended in visible_nodes directly after their parent.
-                        while i < visible.len() {
-                            // We peek at next element and check whether it's actually a child: we cannot
-                            // distinguish strictly by ownership here, but our visible_nodes created the order top, child, child...
-                            // We'll render them indented until we reach another top-level Menu node in the original sequence.
-                            let maybe_rc = visible[i].clone();
-                            // To decide if it's a child, we check if the parent (top_rc) actually contains it.
-                            // This is somewhat costly but safe: check whether parent's children contains maybe_rc by comparing pointer addresses.
-                            let mut is_child_of_top = false;
-                            if let MenuNode::Menu { children: subchildren, .. } = &*top_b {
-                                for s in subchildren {
-                                    // compare pointer equality of Rc (pointer address of inner)
-                                    if Rc::ptr_eq(&s, &maybe_rc) {
-                                        is_child_of_top = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if !is_child_of_top {
-                                break;
-                            }
-                            // Render child
-                            let child_b = maybe_rc.borrow();
-                            match &*child_b {
-                                MenuNode::Menu { name: cname, .. } => out.push(format!("  {} >", cname)),
-                                MenuNode::Item { name, selected, .. } => {
-                                    let prefix = if *selected { "[x]" } else { "[ ]" };
-                                    out.push(format!("  {} {}", prefix, name));
-                                }
-                            }
-                            i += 1;
-                        }
-                    }
-                    MenuNode::Item { name, selected, .. } => {
-                        let prefix = if *selected { "[x]" } else { "[ ]" };
-                        out.push(format!("{} {}", prefix, name));
-                        i += 1;
-                    }
-                }
-            }
-        } else {
-            // not root: visible contains only immediate children of the current menu
-            for n in &visible {
-                let nb = n.borrow();
-                match &*nb {
-                    MenuNode::Menu { name, .. } => out.push(format!("{} >", name)),
-                    MenuNode::Item { name, selected, .. } => {
-                        let prefix = if *selected { "[x]" } else { "[ ]" };
-                        out.push(format!("{} {}", prefix, name));
-                    }
-                }
-            }
-        }
-        out
-    };
-
-    // clamp again after we built strings (protect against empty)
-    if !menu_strings.is_empty() {
-        app.selected_index = app.selected_index.min(menu_strings.len() - 1);
+    if !visible_nodes.is_empty() {
+        app.selected_index = app.selected_index.min(visible_nodes.len() - 1);
     } else {
         app.selected_index = 0;
     }
 
-    // --- Menu Panel ---
     let menu_block = Block::default().title(path_str).borders(Borders::ALL).style(Style::default().fg(Color::Yellow));
-    
-    let menu_items: Vec<ListItem> = menu_strings.iter().map(|s| ListItem::new(s.clone())).collect();
-
     let list = List::new(menu_items)
         .block(menu_block)
         .highlight_style(Style::default().add_modifier(Modifier::BOLD).bg(Color::DarkGray))
         .highlight_symbol(">> ");
     
     let mut list_state = ratatui::widgets::ListState::default();
-    if !menu_strings.is_empty() {
+    if !visible_nodes.is_empty() {
         list_state.select(Some(app.selected_index));
     }
     f.render_stateful_widget(list, main_chunks[0], &mut list_state);
 
-    // --- Side Panel (Selected Items) ---
     let selected_items: Vec<ListItem> = app.get_selected_items().iter().map(|s| ListItem::new(s.clone())).collect();
     let selected_list = List::new(selected_items).block(Block::default().borders(Borders::ALL).title("Selected Components"));
     f.render_widget(selected_list, main_chunks[1]);
 
-    // --- Script Preview ---
-    let script_content = app.generate_commands(false); // Preview without reboot
+    let script_content = app.generate_commands(false);
     let script_preview = Paragraph::new(script_content)
         .wrap(Wrap { trim: true })
         .block(Block::default().borders(Borders::ALL).title("Generated Script Preview"));
     f.render_widget(script_preview, chunks[2]);
 
-    // --- Footer ---
     let footer_text = "Navigate [←→↑↓] | Select [Enter] | [i] Generate Script | [q] Quit";
     let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::Cyan))
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(footer, chunks[3]);
+}
+
+fn get_visible_nodes(nav_path: &[Rc<RefCell<MenuNode>>]) -> Vec<(String, Rc<RefCell<MenuNode>>)> {
+    let mut items = Vec::new();
+    let current_menu = nav_path.last().unwrap();
+    
+    fn build_display_list(items: &mut Vec<(String, Rc<RefCell<MenuNode>>)>, node: &Rc<RefCell<MenuNode>>, depth: usize) {
+        let node_borrow = node.borrow();
+        let indent = "  ".repeat(depth);
+        match &*node_borrow {
+            MenuNode::Menu { name, children } => {
+                items.push((format!("{}{} >", indent, name), node.clone()));
+                for child in children {
+                    build_display_list(items, child, depth + 1);
+                }
+            }
+            MenuNode::Item { name, selected, .. } => {
+                let prefix = if *selected { "[x]" } else { "[ ]" };
+                items.push((format!("{}{}{}", indent, prefix, name), node.clone()));
+            }
+        }
+    }
+
+    if let MenuNode::Menu { children, .. } = &*current_menu.borrow() {
+        if nav_path.len() == 1 { // Root, show full tree
+            for child in children {
+                build_display_list(&mut items, child, 0);
+            }
+        } else { // Submenu, show only its children
+             for child in children {
+                let node_borrow = child.borrow();
+                 match &*node_borrow {
+                    MenuNode::Menu { name, .. } => items.push((format!("{} >", name), child.clone())),
+                    MenuNode::Item { name, selected, .. } => {
+                        let prefix = if *selected { "[x]" } else { "[ ]" };
+                        items.push((format!("{} {}", prefix, name), child.clone()));
+                    }
+                }
+            }
+        }
+    }
+    items
 }
 
 
@@ -541,4 +453,3 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .constraints([Constraint::Percentage((100 - percent_x) / 2), Constraint::Percentage(percent_x), Constraint::Percentage((100 - percent_x) / 2)].as_ref())
         .split(popup_layout[1])[1]
 }
-
