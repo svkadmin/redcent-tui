@@ -33,8 +33,17 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
                     item!("Full Installation", scripts_gnome::full_install)
                 ),
                 menu!("Customization",
-                    // Placeholder for future Gnome customizations
-                )
+                    menu!("Extensions",
+                        menu!("Tiling WM",
+                        ), // Placeholder for Forge, PaperWM, Tiling, etc.
+                        menu!("Top Bar",
+                        ), // Placeholder for Vitals, Status area horizontal spacing, etc.
+                        menu!("Desktop Functions",
+                        ), // Placeholder for Just Perfection, etc.
+                        menu!("Search", 
+                        ) // Placeholder for Search Light
+                    )
+                )   
             ),
             menu!("Sway WM",
                 menu!("Environment Installation",
@@ -72,6 +81,7 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
                 item!("LibreSwan", scripts_net::install_vpn_lswan),
                 item!("StrongSwan", scripts_net::install_vpn_sswan),
                 item!("PPTP", scripts_net::install_vpn_pptp)
+
                 // Placeholders for VPN scripts
             ),
             menu!("KVM (libvirt networks)",
@@ -88,7 +98,7 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
 
 mod scripts_gnome {
     pub fn minimal_install() -> &'static str {
-        "sudo dnf groupinstall -y 'Server with GUI' --exclude=gnome-software,gnome-tour\nsudo systemctl set-default graphical.target"
+        "sudo dnf install -y gdm gnome-browser-connector\nsudo systemctl set-default graphical.target"
     }
     pub fn full_install() -> &'static str {
         "sudo dnf groupinstall -y 'Workstation'\nsudo systemctl set-default graphical.target"
@@ -159,4 +169,3 @@ mod scripts_net {
     }
 
 }
-
