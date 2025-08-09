@@ -26,18 +26,18 @@ macro_rules! menu {
 
 pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
     menu!("Main Menu",
-        menu!("Desktop Environments",
-            menu!("Gnome",
-                menu!("Env Install",
-                    item!("Minimal Install", scripts_gnome::minimal_install),
-                    item!("Full Install", scripts_gnome::full_install)
+        menu!("Graphical Environments",
+            menu!("Gnome DE",
+                menu!("Environment Installation",
+                    item!("Minimal Installation", scripts_gnome::minimal_install),
+                    item!("Full Installation", scripts_gnome::full_install)
                 ),
                 menu!("Customization",
                     // Placeholder for future Gnome customizations
                 )
             ),
-            menu!("Sway",
-                menu!("Env Install",
+            menu!("Sway WM",
+                menu!("Environment Installation",
                     item!("Compile from Source", scripts_sway::compile_from_source)
                 ),
                 menu!("Customization",
@@ -65,7 +65,13 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
             )
         ),
         menu!("Networking",
-            menu!("Gnome",
+            menu!("NetworkManager",
+                item!("OpenVPN", scripts_net::install_vpn_ovpn),
+                item!("OpenConnect", scripts_net::install_vpn_oconn),
+                item!("L2TP", scripts_net::install_vpn_l2tp),
+                item!("LibreSwan", scripts_net::install_vpn_lswan),
+                item!("StrongSwan", scripts_net::install_vpn_sswan),
+                item!("PPTP", scripts_net::install_vpn_pptp)
                 // Placeholders for VPN scripts
             ),
             menu!("KVM (libvirt networks)",
@@ -131,5 +137,26 @@ mod scripts_virt {
     pub fn install_cockpit_full() -> &'static str {
         "sudo dnf install -y cockpit cockpit-machines\nsudo systemctl enable --now cockpit.socket\nsudo firewall-cmd --add-service=cockpit --permanent\nsudo firewall-cmd --reload"
     }
+}
+mod scripts_net {
+    pub fn install_vpn_ovpn() -> &'static str {
+        "sudo dnf install -y NetworkManager-openvpn NetworkManager-openvpn-gnome"
+    }
+    pub fn install_vpn_l2tp() -> &'static str {
+        "sudo dnf install -y NetworkManager-l2tp NetworkManager-l2tp-gnome"
+    }
+    pub fn install_vpn_sswan() -> &'static str {
+        "sudo dnf install -y strongswan strongswan-charon-nm"
+    }
+    pub fn install_vpn_lswan() -> &'static str {
+        "sudo dnf install -y NetworkManager-libreswan NetworkManager-libreswan-gnome"
+    }
+    pub fn install_vpn_pptp() -> &'static str {
+        "sudo dnf install -y NetworkManager-pptp NetworkManager-pptp-gnome"
+    }
+    pub fn install_vpn_oconn() -> &'static str {
+        "sudo dnf install -y NetworkManager-openconnect NetworkManager-openconnect-gnome"
+    }
+
 }
 
