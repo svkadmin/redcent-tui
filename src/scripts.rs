@@ -55,8 +55,6 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
             )
         ),
         menu!("Repositories",
-            // The "view installed" action is not a script, so it's not included here.
-            // This would require a different kind of action handling.
             menu!("Add Repositories",
                 item!("CEPH", scripts_repos::add_ceph),
                 item!(if os == OsDistribution::Rhel { "CodeReady Builder" } else { "CRB" }, scripts_repos::add_crb),
@@ -81,7 +79,6 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
                 item!("LibreSwan", scripts_net::install_vpn_lswan),
                 item!("StrongSwan", scripts_net::install_vpn_sswan),
                 item!("PPTP", scripts_net::install_vpn_pptp)
-
                 // Placeholders for VPN scripts
             ),
             menu!("KVM (libvirt networks)",
@@ -89,7 +86,7 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
             )
         ),
         menu!("Hardening",
-            // Placeholders for hardening scripts
+            // Placeholders for hardening scripts (openscap)
         )
     )
 }
@@ -107,7 +104,7 @@ mod scripts_gnome {
 
 mod scripts_sway {
     pub fn compile_from_source() -> &'static str {
-        "# This is a complex process and requires many dependencies.\n# This script is a placeholder for the required commands.\nsudo dnf install -y ninja-build meson gcc wayland-devel wayland-protocols-devel libinput-devel libxcb-devel libxkbcommon-devel pixman-devel"
+        "# This script is a placeholder for the required commands.\nsudo dnf install -y ninja-build meson gcc wayland-devel wayland-protocols-devel libinput-devel libxcb-devel libxkbcommon-devel pixman-devel"
     }
     pub fn install_wofi() -> &'static str {
         "sudo dnf install -y wofi"
