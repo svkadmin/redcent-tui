@@ -40,10 +40,14 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
                         ), // Placeholder for Vitals, Status area horizontal spacing, etc.
                         menu!("Desktop Functions",
                         ), // Placeholder for Just Perfection, etc.
-                        menu!("Search", 
+                        menu!("Search / Launchers", 
                         ) // Placeholder for Search Light
                     )
-                )   
+                ),
+                menu!("Applications / Packages",
+                    menu!("Terminals",
+                    )
+                ) // Placeholder for ghosty, allacrity, ptyxis, etc.  
             ),
             menu!("Sway WM",
                 menu!("Environment Installation",
@@ -65,7 +69,10 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
             )
         ),
         menu!("Virtualization",
-            item!("KVM (Core & Tools)", scripts_virt::install_kvm),
+            menu!("Virtualization Engines",
+                item!("KVM (Core & Tools)", scripts_virt::install_kvm)
+                // add elf, ovirt, harvester? - split to type1 type2 a virtualization tools
+            ),
             menu!("Cockpit",
                 item!("Minimal Install", scripts_virt::install_cockpit_minimal),
                 item!("Full Install (with Machines)", scripts_virt::install_cockpit_full)
@@ -87,6 +94,9 @@ pub fn build_menu_tree(os: OsDistribution) -> Rc<RefCell<MenuNode>> {
         ),
         menu!("Hardening",
             // Placeholders for hardening scripts (openscap)
+        ),
+        menu!("Monitoring",
+            // Placeholders for monitoring (cockpit-pcp, etc.)
         )
     )
 }
@@ -142,7 +152,7 @@ mod scripts_virt {
         "sudo dnf install -y cockpit\nsudo systemctl enable --now cockpit.socket\nsudo firewall-cmd --add-service=cockpit --permanent\nsudo firewall-cmd --reload"
     }
     pub fn install_cockpit_full() -> &'static str {
-        "sudo dnf install -y cockpit cockpit-machines\nsudo systemctl enable --now cockpit.socket\nsudo firewall-cmd --add-service=cockpit --permanent\nsudo firewall-cmd --reload"
+        "sudo dnf install -y cockpit cockpit-files cockpit-bridge cockpit-system cockpit-ws-selinux cockpit-packagekit cockpit-ws cockpit-storaged subscription-manager-cockpit cockpit-machines cockpit-podman\nsudo systemctl enable --now cockpit.socket\nsudo firewall-cmd --add-service=cockpit --permanent\nsudo firewall-cmd --reload"
     }
 }
 mod scripts_net {
