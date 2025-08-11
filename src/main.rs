@@ -1,5 +1,4 @@
-// main.rs
-
+// src/main.rs
 mod scripts;
 
 use crossterm::{
@@ -214,6 +213,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<A
             match app.state {
                 AppState::Running => {
                     let visible_nodes = get_visible_nodes(&app.nav_path);
+                    let visible_len = visible_nodes.len();
+
+                    if visible_len > 0 {
+                        app.selected_index = app.selected_index.min(visible_len - 1);
+                    } else {
+                        app.selected_index = 0;
+                    }
 
                     match key.code {
                         KeyCode::Char('q') => return Ok(ActionAfterExit::Quit),
